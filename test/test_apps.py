@@ -3,9 +3,10 @@ import unittest
 
 import cloudfoundry_client.main as main
 from abstract_test_case import AbstractTestCase
+from cloudfoundry_client.errors import InvalidStatusCode
 from cloudfoundry_client.imported import BAD_REQUEST, OK, reduce
-from fake_requests import mock_response
-from imported import CREATED, patch, call
+from fake_requests import mock_response, TARGET_ENDPOINT
+from imported import CREATED, patch, call, NO_CONTENT
 
 
 class TestApps(unittest.TestCase, AbstractTestCase):
@@ -67,6 +68,11 @@ class TestApps(unittest.TestCase, AbstractTestCase):
         self.client.get.assert_called_with(self.client.get.return_value.url)
         self.assertIsNotNone(application)
 
+    def test_associate_route(self):
+        self.client.put.return_value = mock_response('/v2/apps/app_id/routes/route_id', NO_CONTENT, None)
+        self.client.apps.associate_route('app_id', 'route_id')
+        self.client.delete.assert_called_with(self.client.put.return_value.url)
+
     def test_list_routes(self):
         self.client.get.return_value = mock_response(
             '/v2/apps/app_id/routes?q=route_guid%3Aroute_id',
@@ -76,9 +82,14 @@ class TestApps(unittest.TestCase, AbstractTestCase):
         cpt = reduce(lambda increment, _: increment + 1,
                      self.client.apps.list_routes('app_id', route_guid='route_id'), 0)
         for route in self.client.apps.list_routes('app_id', route_guid='route_id'):
-            print (route)
+            print(route)
         self.client.get.assert_called_with(self.client.get.return_value.url)
         self.assertEqual(cpt, 1)
+
+    def test_remove_route(self):
+        self.client.delete.return_value = mock_response('/v2/apps/app_id/routes/route_id', NO_CONTENT, None)
+        self.client.apps.remove_route('app_id', 'route_id')
+        self.client.delete.assert_called_with(self.client.delete.return_value.url)
 
     def test_list_service_bindings(self):
         self.client.get.return_value = mock_response(
@@ -133,7 +144,9 @@ class TestApps(unittest.TestCase, AbstractTestCase):
             OK,
             None,
             'v2', 'apps', 'GET_{id}_instances_response.json')
-        self.client.get.side_effect = [mock_summary, mock_instances_stopped, mock_instances_started]
+        self.client.get.side_effect = [mock_summary,
+                                       InvalidStatusCode(BAD_REQUEST, dict(code=220001)),
+                                       mock_instances_started]
 
         application = self.client.apps.start('app_id')
         self.client.put.assert_called_with(self.client.put.return_value.url,
@@ -150,15 +163,40 @@ class TestApps(unittest.TestCase, AbstractTestCase):
             CREATED,
             None,
             'v2', 'apps', 'PUT_{id}_response.json')
-        self.client.get.return_value = mock_response(
-            '/v2/apps/app_id/instances',
-            BAD_REQUEST,
-            None,
-            'v2', 'apps', 'GET_{id}_instances_stopped_response.json')
+        self.client.get.side_effect = [InvalidStatusCode(BAD_REQUEST, dict(code=220001))]
         application = self.client.apps.stop('app_id')
         self.client.put.assert_called_with(self.client.put.return_value.url,
                                            json=dict(state='STOPPED'))
-        self.client.get.assert_called_with(self.client.get.return_value.url)
+        self.client.get.assert_called_with('%s/v2/apps/app_id/instances' % TARGET_ENDPOINT)
+        self.assertIsNotNone(application)
+
+    def test_create(self):
+        self.client.post.return_value = mock_response(
+            '/v2/apps',
+            CREATED,
+            None,
+            'v2', 'apps', 'POST_response.json')
+        application = self.client.apps.create(name='test', space_guid='1fbb3e81-4f55-4fd3-9820-45febbd5e53e',
+                                              stack_guid='82f9c01c-72f2-4d3e-b5ed-eab97a6203cf', memory=1024,
+                                              instances=1,
+                                              disk_quota=1024, health_check_type="port")
+        self.client.post.assert_called_with(self.client.post.return_value.url,
+                                            json=dict(name='test', space_guid='1fbb3e81-4f55-4fd3-9820-45febbd5e53e',
+                                                      stack_guid='82f9c01c-72f2-4d3e-b5ed-eab97a6203cf', memory=1024,
+                                                      instances=1, disk_quota=1024, health_check_type="port"))
+        self.assertIsNotNone(application)
+
+    def test_update(self):
+        self.client.put.return_value = mock_response(
+            '/v2/apps/app_id',
+            CREATED,
+            None,
+            'v2', 'apps', 'PUT_{id}_response.json')
+        application = self.client.apps.update('app_id', stack_guid='82f9c01c-72f2-4d3e-b5ed-eab97a6203cf', memory=1024,
+                                              instances=1, disk_quota=1024, health_check_type="port")
+        self.client.put.assert_called_with(self.client.put.return_value.url,
+                                           json=dict(stack_guid='82f9c01c-72f2-4d3e-b5ed-eab97a6203cf', memory=1024,
+                                                     instances=1, disk_quota=1024, health_check_type="port"))
         self.assertIsNotNone(application)
 
     def test_entity(self):

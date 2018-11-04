@@ -9,6 +9,7 @@ from cloudfoundry_client.errors import InvalidStatusCode
 from cloudfoundry_client.imported import UNAUTHORIZED
 from cloudfoundry_client.v2.apps import AppManager
 from cloudfoundry_client.v2.buildpacks import BuildpackManager
+from cloudfoundry_client.v2.routes import RouteManager
 from cloudfoundry_client.v2.service_bindings import ServiceBindingManager
 from cloudfoundry_client.v2.service_brokers import ServiceBrokerManager
 from cloudfoundry_client.v2.service_instances import ServiceInstanceManager
@@ -43,10 +44,15 @@ class CloudFoundryClient(CredentialManager):
         self.apps = AppManager(target_endpoint, self)
         self.buildpacks = BuildpackManager(target_endpoint, self)
         # Default implementations
+
         self.organizations = EntityManager(target_endpoint, self, '/v2/organizations')
-        self.spaces = EntityManager(target_endpoint, self, '/v2/spaces')
+        self.private_domains = EntityManager(target_endpoint, self, '/v2/private_domains')
+        self.routes = RouteManager(target_endpoint, self)
         self.services = EntityManager(target_endpoint, self, '/v2/services')
-        self.routes = EntityManager(target_endpoint, self, '/v2/routes')
+        self.shared_domains = EntityManager(target_endpoint, self, '/v2/shared_domains')
+        self.spaces = EntityManager(target_endpoint, self, '/v2/spaces')
+        self.stacks = EntityManager(target_endpoint, self, '/v2/stacks')
+
         self._doppler = DopplerClient(self.info.doppler_endpoint,
                                       self.proxies[
                                           'http' if self.info.doppler_endpoint.startswith('ws://') else 'https'],
